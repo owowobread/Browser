@@ -1,0 +1,40 @@
+name: Build App
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 */16 * *'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Android App
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Grant execute permissions
+        run: |
+          chmod +x *.sh
+
+      - name: Build application
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          LOCAL_TEST_JKS: ${{ secrets.LOCAL_TEST_JKS }}
+          STORE_TEST_JKS: ${{ secrets.STORE_TEST_JKS }}
+        run: |
+          ./build.sh
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-app-artifacts
+          path: |
+            chromium/src/out/release/*.apk
+            chromium/src/out/release/*.aab

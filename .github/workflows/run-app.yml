@@ -1,0 +1,59 @@
+name: Build and Run App
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-run:
+    name: Build and Launch on Emulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Grant execute permissions
+        run: |
+          chmod +x *.sh
+
+      - name: Build application
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          LOCAL_TEST_JKS: ${{ secrets.LOCAL_TEST_JKS }}
+          STORE_TEST_JKS: ${{ secrets.STORE_TEST_JKS }}
+        run: |
+          ./build.sh
+
+      - name: Run Android emulator and install APK
+        uses: reactivecircus/android-emulator-runner@v4
+        with:
+          api-level: 33
+          arch: x86_64
+          target: google_apis
+          emulator-options: -no-window -gpu swiftshader_indirect
+          script: |
+            cd chromium/src/out/release
+            apk=$(ls *arm64-v8a.apk 2>/dev/null | head -n1)
+            if [ -z "$apk" ]; then
+              apk=$(ls *.apk 2>/dev/null | head -n1)
+            fi
+            if [ -z "$apk" ]; then
+              echo 'No APK found to install'
+              exit 1
+            fi
+            adb wait-for-device
+            adb install -r "$apk"
+            package=$(adb shell pm list packages | tr -d '\r' | grep -E 'org\.chromium|app\.vanadium|org\.chromium\.chrome' | head -n1 | cut -d: -f2)
+            if [ -z "$package" ]; then
+              echo 'Failed to resolve package name from installed APK'
+              adb shell pm list packages | tr -d '\r' | grep -E 'org\.chromium|app\.vanadium|org\.chromium\.chrome'
+              exit 1
+            fi
+            adb shell monkey -p "$package" -c android.intent.category.LAUNCHER 1
+            sleep 20
+            adb shell dumpsys window windows | grep -E 'mCurrentFocus|mFocusedApp'
